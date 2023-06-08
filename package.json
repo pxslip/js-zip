@@ -1,25 +1,26 @@
 {
-  "name": "adm-zip",
-  "version": "0.5.10",
-  "description": "Javascript implementation of zip for nodejs with support for electron original-fs. Allows user to create or extract zip files both in memory or to/from disk",
+  "name": "@pxslips/js-zip",
+  "version": "0.1.0",
+  "description": "Typescript implementation of zip for nodejs with support for electron original-fs. Allows user to create or extract zip files both in memory or to/from disk",
   "scripts": {
     "test": "mocha -R spec",
     "test:format": "npm run format:prettier:raw -- --check",
     "format": "npm run format:prettier",
     "format:prettier": "npm run format:prettier:raw -- --write",
-    "format:prettier:raw": "prettier \"**/*.{js,yml,json}\""
+    "format:prettier:raw": "prettier \"**/*.{js,yml,json,ts}\""
   },
   "keywords": [
     "zip",
     "methods",
     "archive",
-    "unzip"
+    "unzip",
+    "typescript"
   ],
-  "homepage": "https://github.com/cthackers/adm-zip",
-  "author": "Nasca Iacob <sy@another-d-mention.ro> (https://github.com/cthackers)",
+  "homepage": "https://github.com/pxslip/js-zip",
+  "author": "Px Slip <js-zip@pxslip.com> (https://github.com/pxslip)",
   "bugs": {
-    "email": "sy@another-d-mention.ro",
-    "url": "https://github.com/cthackers/adm-zip/issues"
+    "email": "js-zip@pxslip.com",
+    "url": "https://github.com/pxslip/js-zip/issues"
   },
   "license": "MIT",
   "files": [
@@ -31,7 +32,7 @@
     "zipFile.js",
     "LICENSE"
   ],
-  "main": "adm-zip.js",
+  "main": "dist/index.js",
   "repository": {
     "type": "git",
     "url": "https://github.com/cthackers/adm-zip.git"
@@ -40,9 +41,17 @@
     "node": ">=6.0"
   },
   "devDependencies": {
+    "@types/node": "^20.2.5",
+    "@typescript-eslint/eslint-plugin": "^5.59.9",
+    "@typescript-eslint/parser": "^5.59.9",
     "chai": "^4.3.4",
+    "esbuild": "^0.17.19",
+    "eslint": "^8.42.0",
+    "eslint-config-prettier": "^8.8.0",
     "mocha": "^10.2.0",
     "prettier": "^2.2.1",
-    "rimraf": "^3.0.2"
-  }
+    "rimraf": "^3.0.2",
+    "typescript": "^5.1.3"
+  },
+  "packageManager": "yarn@3.6.0"
 }
