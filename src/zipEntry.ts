@@ -1,28 +1,28 @@
-import { EntryHeader } from './headers';
+import { EntryHeader, LocalHeader } from './headers';
 import { Utils, Constants, Errors } from './util';
 import { Deflater, Inflater, ZipCrypto } from './methods';
 import { CENHDR, DEFLATED, STORED } from './util/constants';
 import { BAD_CRC, UNKNOWN_METHOD } from './util/errors';
 import { crc32, toBuffer } from './util/utils';
 import { BufferCallback, BufferCallbackWithError } from './types';
+import { CentralDirectoryHeader } from './headers/CentralDirectoryHeader';
 
 export class ZipEntry {
-	private _entryHeader: EntryHeader;
+	private _centralDirectoryHeader: CentralDirectoryHeader;
+	private _localHeader: LocalHeader;
 	private _entryName = Buffer.alloc(0);
 	private _comment = Buffer.alloc(0);
 	private _isDirectory = false;
 	private _uncompressedData?: Buffer;
 	private _extra = Buffer.alloc(0);
 	private _compressedData: Buffer;
-	private _input: Buffer;
+	private _fileEntryData: Buffer;
 
-	constructor(input: Buffer) {
-		this._input = input;
-		this._entryHeader = new EntryHeader(input);
-		this._compressedData = input.subarray(
-			this._entryHeader.realDataOffset,
-			this._entryHeader.realDataOffset + this._entryHeader.compressedSize,
-		);
+	constructor(central: Buffer = Buffer.alloc(0), filesData: Buffer = Buffer.alloc(0)) {
+		this._centralDirectoryHeader = new CentralDirectoryHeader(central);
+		//TODO: pull the local header and file data out of the filesData buffer
+		this._localHeader = new LocalHeader(filesData);
+		this._compressedData = filesData.subarray(this._localHeader)
 	}
 
 	get compressedData(): Buffer {

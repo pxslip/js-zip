@@ -1,9 +1,12 @@
 import { ZipEntry } from './zipEntry';
 import { Utils } from './util';
-import { EndOfCentralDirectory } from './headers/EndOfCentralDirectory';
+import { EndOfCentralDirectoryRecord } from './headers/EndOfCentralDirectoryRecord';
 import { END64HDR, END64SIG, ENDHDR, ENDSIG, ZIP64LEAD, ZIP64SIG, ZIP64SIZE } from './util/constants';
-import { readBigUInt64LE } from './util/utils';
-import { INVALID_FORMAT } from './util/errors';
+import { bigIntToNumber, readBigUInt64LE } from './util/utils';
+import { INVALID_FORMAT, logError } from './util/errors';
+import { Zip64EndOfCentralDirectoryLocator } from './headers/Zip64EndOfCentralDirectoryLocator';
+import { Zip64EndOfCentralDirectoryRecord } from './headers/Zip64EndOfCentralDirectoryRecord';
+import { CDH_OFFSETS } from './headers/CentralDirectoryHeader';
 
 interface Options {
 	noSort: boolean;
@@ -15,64 +18,87 @@ const defaultOptions = {
 };
 
 export class ZipFile {
-	private _entryList = [];
-	private _entryTable = {};
+	private _entries: ZipEntry[] = [];
 	private _comment = Buffer.alloc(0);
-	private _mainHeader: EndOfCentralDirectory;
 	private _loadedEntries = false;
 	private _options: Options;
+	private _fileData: Buffer;
+	private _centralDirectoryData: Buffer;
+	private _endOfCentralDirectory: EndOfCentralDirectoryRecord;
+	private _z64EndOfCentralDirectoryLocator?: Zip64EndOfCentralDirectoryLocator;
+	private _z64EndOfCentralDirectoryRecord?: Zip64EndOfCentralDirectoryRecord;
 
 	constructor(data?: Buffer, options: Partial<Options> = {}) {
+		this._options = Object.assign(defaultOptions, options);
 		if (!data) {
 			data = Buffer.alloc(0);
 			this._loadedEntries = true;
 		}
-		this._mainHeader = new EndOfCentralDirectory(data);
-		if (this._mainHeader.commentLength) {
-			this._comment = data.subarray(commentEnd + ENDHDR);
+
+		this._endOfCentralDirectory = new EndOfCentralDirectoryRecord(data);
+		try {
+			// check for Zip64 EOCD information
+			this._z64EndOfCentralDirectoryLocator = new Zip64EndOfCentralDirectoryLocator(data);
+			this._z64EndOfCentralDirectoryRecord = new Zip64EndOfCentralDirectoryRecord(
+				data,
+				this._z64EndOfCentralDirectoryLocator.z64EOCDOffset,
+			);
+		} catch (exc) {
+			if (exc instanceof Error) {
+				logError(exc.message);
+			}
 		}
-		this._options = Object.assign(defaultOptions, options);
+		this._fileData = data.subarray(0, bigIntToNumber(this.centralDirectoryOffset));
+		this._centralDirectoryData = data.subarray(bigIntToNumber(this.centralDirectoryOffset), this.postFixSize);
 	}
 
-	readMainHeader(data: Buffer, readNow: boolean = false) {
-		let i = data.length - ENDHDR; // END header size
-		const max = Math.max(0, i - 0xffff); // 0xFFFF is the max zip file comment length
-		let n = max;
-		let endStart = data.length;
-		let endOffset = -1; // Start offset of the END header
-		let commentEnd = 0;
+	get comment() {
+		return this._endOfCentralDirectory.comment;
+	}
 
-		for (i; i >= n; i--) {
-			if (data[i] !== 0x50) continue; // quick check that the byte is 'P'
-			if (data.readUInt32LE(i) === ENDSIG) {
-				// "PK\005\006"
-				endOffset = i;
-				commentEnd = i;
-				endStart = i + ENDHDR;
-				// We already found a regular signature, let's look just a bit further to check if there's any zip64 signature
-				n = i - END64HDR;
-				continue;
-			}
-
-			if (data.readUInt32LE(i) === END64SIG) {
-				// Found a zip64 signature, let's continue reading the whole zip64 record
-				n = max;
-				continue;
-			}
-
-			if (data.readUInt32LE(i) === ZIP64SIG) {
-				// Found the zip64 record, let's determine it's size
-				endOffset = i;
-				endStart = i + readBigUInt64LE(data, i + ZIP64SIZE) + ZIP64LEAD;
-				break;
-			}
+	get numberOfFiles() {
+		if (this._z64EndOfCentralDirectoryRecord) {
+			return this._z64EndOfCentralDirectoryRecord.totalEntries;
+		} else {
+			return this._endOfCentralDirectory.totalEntries;
 		}
+	}
 
-		if (!~endOffset) throw new Error(INVALID_FORMAT);
+	get centralDirectoryOffset() {
+		if (this._z64EndOfCentralDirectoryRecord) {
+			return this._z64EndOfCentralDirectoryRecord.centralDirectoryOffset;
+		} else {
+			this._endOfCentralDirectory.centralDirectoryOffset;
+		}
+	}
 
-		if (readNow) readEntries();
+	get postFixSize() {
+		let size = this._endOfCentralDirectory.size;
+		if (this._z64EndOfCentralDirectoryLocator) {
+			size += this._z64EndOfCentralDirectoryLocator.size;
+		}
+		if (this._z64EndOfCentralDirectoryRecord) {
+			size += bigIntToNumber(this._z64EndOfCentralDirectoryRecord.size);
+		}
+		return size;
+	}
 
-		return new EndOfCentralDirectory(data.subarray(endOffset, endStart));
+	[Symbol.iterator]() {
+		let index = 0;
+		let centralDirectoryOffset = 0;
+		return {
+			next: () => {
+				if (index < this.numberOfFiles) {
+					if (!this._entries[index]) {
+						let centralDirectoryData = this._centralDirectoryData.subarray(centralDirectoryOffset);
+						// grab the local data header offset
+						const localOffset = centralDirectoryData.readUInt32LE(CDH_OFFSETS.LOCAL_HEADER_OFFSET);
+						const fileData = this._fileData.subarray(localOffset);
+						this._entries[index++] = new ZipEntry(centralDirectoryData);
+					}
+				}
+			},
+		};
 	}
 }
 
@@ -80,7 +106,7 @@ module.exports = function (/*Buffer|null*/ inBuffer: Buffer, /** object */ optio
 	var entryList = [],
 		entryTable = {},
 		_comment = Buffer.alloc(0),
-		mainHeader = new EndOfCentralDirectory(inBuffer),
+		mainHeader = new EndOfCentralDirectoryRecord(inBuffer),
 		loadedEntries = false;
 
 	// assign options
@@ -98,7 +124,7 @@ module.exports = function (/*Buffer|null*/ inBuffer: Buffer, /** object */ optio
 
 	function iterateEntries(callback) {
 		const totalEntries = mainHeader.diskEntries; // total number of entries
-		let index = mainHeader.offset; // offset of first CEN header
+		let index = mainHeader.centralDirectoryOffset; // offset of first CEN header
 
 		for (let i = 0; i < totalEntries; i++) {
 			let tmp = index;
@@ -117,7 +143,7 @@ module.exports = function (/*Buffer|null*/ inBuffer: Buffer, /** object */ optio
 		loadedEntries = true;
 		entryTable = {};
 		entryList = new Array(mainHeader.diskEntries); // total number of entries
-		var index = mainHeader.offset; // offset of first CEN header
+		var index = mainHeader.centralDirectoryOffset; // offset of first CEN header
 		for (var i = 0; i < entryList.length; i++) {
 			var tmp = index,
 				entry = new ZipEntry(inBuffer);
@@ -320,8 +346,8 @@ module.exports = function (/*Buffer|null*/ inBuffer: Buffer, /** object */ optio
 			let totalSize = 0;
 			let dindex = 0;
 
-			mainHeader.size = 0;
-			mainHeader.offset = 0;
+			mainHeader.centralDirectorySize = 0;
+			mainHeader.centralDirectoryOffset = 0;
 
 			for (const entry of entryList) {
 				// compress data and set local and entry header accordingly. Reason why is called first
@@ -348,13 +374,13 @@ module.exports = function (/*Buffer|null*/ inBuffer: Buffer, /** object */ optio
 				const entryHeader = entry.packHeader();
 				entryHeaders.push(entryHeader);
 				// 5. update main header
-				mainHeader.size += entryHeader.length;
+				mainHeader.centralDirectorySize += entryHeader.length;
 				totalSize += dataLength + entryHeader.length;
 			}
 
 			totalSize += mainHeader.mainHeaderSize; // also includes zip file comment length
 			// point to end of data and beginning of central directory first record
-			mainHeader.offset = dindex;
+			mainHeader.centralDirectoryOffset = dindex;
 
 			dindex = 0;
 			const outBuffer = Buffer.alloc(totalSize);
@@ -397,8 +423,8 @@ module.exports = function (/*Buffer|null*/ inBuffer: Buffer, /** object */ optio
 				let totalSize = 0;
 				let dindex = 0;
 
-				mainHeader.size = 0;
-				mainHeader.offset = 0;
+				mainHeader.centralDirectorySize = 0;
+				mainHeader.centralDirectoryOffset = 0;
 
 				const compress2Buffer = function (entryLists) {
 					if (entryLists.length) {
@@ -422,7 +448,7 @@ module.exports = function (/*Buffer|null*/ inBuffer: Buffer, /** object */ optio
 
 							const entryHeader = entry.packHeader();
 							entryHeaders.push(entryHeader);
-							mainHeader.size += entryHeader.length;
+							mainHeader.centralDirectorySize += entryHeader.length;
 							totalSize += dataLength + entryHeader.length;
 
 							compress2Buffer(entryLists);
@@ -430,7 +456,7 @@ module.exports = function (/*Buffer|null*/ inBuffer: Buffer, /** object */ optio
 					} else {
 						totalSize += mainHeader.mainHeaderSize; // also includes zip file comment length
 						// point to end of data and beginning of central directory first record
-						mainHeader.offset = dindex;
+						mainHeader.centralDirectoryOffset = dindex;
 
 						dindex = 0;
 						const outBuffer = Buffer.alloc(totalSize);

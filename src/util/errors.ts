@@ -2,6 +2,7 @@
 export const INVALID_LOC = 'Invalid LOC header (bad signature)';
 export const INVALID_CEN = 'Invalid CEN header (bad signature)';
 export const INVALID_END = 'Invalid END header (bad signature)';
+export const INVALID_HEADER = 'Invalid Header, signature not found';
 
 /* ZipEntry error messages*/
 export const NO_DATA = 'Nothing to decompress';
@@ -42,4 +43,14 @@ export class FileNotFoundError extends Error {
 	constructor(file: string) {
 		super(`File not found: ${file}`);
 	}
+}
+
+export class BigIntOutOfRangeError extends Error {
+	constructor() {
+		super('The provided BigInt is out of the maximum numeric range');
+	}
+}
+
+export function logError(msg: string) {
+	console.error(msg); //TODO: add ways to better handle only logging errors if debugging
 }

@@ -1,3 +1,3 @@
 export * from './CentralEntry';
-export * from './EndOfCentralDirectory';
-export * from './LocalEntry';
+export * from './EndOfCentralDirectoryRecord';
+export * from './LocalHeader';

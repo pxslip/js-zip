@@ -14,10 +14,26 @@ import {
 } from '../util/constants';
 import { INVALID_LOC } from '../util/errors';
 
+export enum LOCAL_HEADER_OFFSETS {
+	SIGNATURE = 0x04034b50,
+	MIN_HEADER_SIZE = 32,
+	VERSION_NEEDED = 4,
+	FLAGS = 6,
+	COMPRESSION_METHOD = 8,
+	LAST_MODIFIED_TIME = 10,
+	LAST_MODIFIED_DATE = 12,
+	CRC_32 = 14,
+	COMPRESSED_SIZE = 18,
+	UNCOMPRESSED_SIZE = 22,
+	FILE_NAME_LENGTH = 26,
+	EXTRA_FIELD_LENGTH = 28,
+	FILE_NAME = 30,
+}
+
 /**
  * A representation of the local file header
  */
-export class LocalEntry {
+export class LocalHeader {
 	private _version: number;
 	private _flags: number;
 	private _method: number;
@@ -33,28 +49,28 @@ export class LocalEntry {
 
 	constructor(data: Buffer) {
 		// 30 bytes and should start with "PK\003\004"
-		if (data.readUInt32LE(0) !== LOCSIG) {
+		if (data.readUInt32LE(0) !== LOCAL_HEADER_OFFSETS.SIGNATURE) {
 			throw new Error(INVALID_LOC);
 		}
-		this._version = data.readUInt16LE(LOCVER);
-		this._flags = data.readUInt16LE(LOCFLG);
+		this._version = data.readUInt16LE(LOCAL_HEADER_OFFSETS.VERSION_NEEDED);
+		this._flags = data.readUInt16LE(LOCAL_HEADER_OFFSETS.FLAGS);
 		// compression method
-		this._method = data.readUInt16LE(LOCHOW);
+		this._method = data.readUInt16LE(LOCAL_HEADER_OFFSETS.COMPRESSION_METHOD);
 		// modification time
-		this._modifiedTime = data.readUInt16LE(LOCTIM);
-		this._modifiedDate = data.readUInt16LE(LOCDAT);
+		this._modifiedTime = data.readUInt16LE(LOCAL_HEADER_OFFSETS.LAST_MODIFIED_TIME);
+		this._modifiedDate = data.readUInt16LE(LOCAL_HEADER_OFFSETS.LAST_MODIFIED_DATE);
 		// uncompressed file crc-32 value
-		this._crc32 = data.readUInt32LE(LOCCRC);
+		this._crc32 = data.readUInt32LE(LOCAL_HEADER_OFFSETS.CRC_32);
 		// compressed size
-		this._compressedSize = data.readUInt32LE(LOCSIZ);
+		this._compressedSize = data.readUInt32LE(LOCAL_HEADER_OFFSETS.COMPRESSED_SIZE);
 		// uncompressed size
-		this._uncompressedSize = data.readUInt32LE(LOCLEN);
+		this._uncompressedSize = data.readUInt32LE(LOCAL_HEADER_OFFSETS.UNCOMPRESSED_SIZE);
 		// filename length
-		this._fileNameLength = data.readUInt16LE(LOCNAM);
+		this._fileNameLength = data.readUInt16LE(LOCAL_HEADER_OFFSETS.FILE_NAME_LENGTH);
 		// extra field length
-		this._extraLength = data.readUInt16LE(LOCEXT);
-		this._fileNameRaw = data.subarray(LOCEND, this._fileNameLength);
-		this._extraRaw = data.subarray(LOCEND + this._fileNameLength, this._extraLength);
+		this._extraLength = data.readUInt16LE(LOCAL_HEADER_OFFSETS.EXTRA_FIELD_LENGTH);
+		this._fileNameRaw = data.subarray(LOCAL_HEADER_OFFSETS.FILE_NAME, this._fileNameLength);
+		this._extraRaw = data.subarray(LOCAL_HEADER_OFFSETS.FILE_NAME + this._fileNameLength, this._extraLength);
 	}
 
 	public get version(): number {

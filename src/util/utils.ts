@@ -1,6 +1,6 @@
 import fs, { Mode } from 'node:fs';
 import path, { dirname, join, normalize } from 'node:path';
-import { FileInTheWayError } from './errors';
+import { BigIntOutOfRangeError, FileInTheWayError } from './errors';
 import type { Options } from '../types';
 
 export const isWin = typeof process === 'object' && 'win32' === process.platform;
@@ -380,6 +380,14 @@ export function readBigUInt64LE(/*Buffer*/ buffer: Buffer, /*int*/ index: number
 	slice.swap64();
 
 	return parseInt(`0x${slice.toString('hex')}`);
+}
+
+export function bigIntToNumber(value?: bigint) {
+	value = value ?? BigInt(0);
+	if (value > Number.MAX_SAFE_INTEGER || value < Number.MIN_SAFE_INTEGER) {
+		throw new BigIntOutOfRangeError();
+	}
+	return Number(value);
 }
 
 Utils.isWin = isWin; // Do we have windows system
